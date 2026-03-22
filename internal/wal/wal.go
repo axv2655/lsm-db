@@ -3,6 +3,7 @@ package wal
 import (
 	"encoding/binary"
 	"fmt"
+	"io"
 	"os"
 	"sync"
 )
@@ -83,17 +84,26 @@ func (w *WAL) ReadFile() ([]Entry, error) {
 	var entries []Entry // used to save all entries
 	for opErr == nil {  // since every operation has an opType, checking if theres an error reading anything
 		// reads value from file and converts lens to integers
-		w.file.Read(lenOfKeyBytes)
+		if _, err := io.ReadFull(w.file, lenOfKeyBytes); err != nil {
+			return nil, fmt.Errorf("error reading wal file for len of key, error: %w", err)
+		}
 		lenOfKey := binary.LittleEndian.Uint32(lenOfKeyBytes)
-		// keeps the string in byte slice format
-		keyBytes := make([]byte, lenOfKey)
-		w.file.Read(keyBytes)
 
-		w.file.Read(lenOfValueBytes)
+		keyBytes := make([]byte, lenOfKey)
+		if _, err := io.ReadFull(w.file, keyBytes); err != nil {
+			return nil, fmt.Errorf("error reading wal file for key, error: %w", err)
+		}
+
+		if _, err := io.ReadFull(w.file, lenOfValueBytes); err != nil {
+			return nil, fmt.Errorf("error reading wal file for len of value, error: %w", err)
+		}
 		lenOfValue := binary.LittleEndian.Uint32(lenOfValueBytes)
 
 		valueBytes := make([]byte, lenOfValue)
-		w.file.Read(valueBytes)
+		if _, err := io.ReadFull(w.file, valueBytes); err != nil {
+			return nil, fmt.Errorf("error reading wal file for value, error: %w", err)
+		}
+
 		// creates an entry obj and adds to the entries slice
 		entry := Entry{
 			op,
