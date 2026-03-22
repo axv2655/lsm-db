@@ -69,20 +69,23 @@ func (w *WAL) Append(entry Entry) error {
 	return nil
 }
 
-func (w *WAL) Read() ([]Entry, error) {
+func (w *WAL) ReadFile() ([]Entry, error) {
+	// creating all the slices that can be reused (because they are converted to integers)
 	opBytes := make([]byte, 1)
 	lenOfKeyBytes := make([]byte, 4)
 	lenOfValueBytes := make([]byte, 4)
 	if _, err := w.file.Read(opBytes); err != nil {
 		return nil, fmt.Errorf("No data stored in file")
 	}
+	// Converts the first (and only byte) of opBytes to a optype
 	op := OpType(opBytes[0])
 	var opErr error = nil
-	var entries []Entry
-	for opErr == nil {
+	var entries []Entry // used to save all entries
+	for opErr == nil {  // since every operation has an opType, checking if theres an error reading anything
+		// reads value from file and converts lens to integers
 		w.file.Read(lenOfKeyBytes)
 		lenOfKey := binary.LittleEndian.Uint32(lenOfKeyBytes)
-
+		// keeps the string in byte slice format
 		keyBytes := make([]byte, lenOfKey)
 		w.file.Read(keyBytes)
 
@@ -91,6 +94,7 @@ func (w *WAL) Read() ([]Entry, error) {
 
 		valueBytes := make([]byte, lenOfValue)
 		w.file.Read(valueBytes)
+		// creates an entry obj and adds to the entries slice
 		entry := Entry{
 			op,
 			keyBytes,
