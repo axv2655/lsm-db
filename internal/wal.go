@@ -69,11 +69,38 @@ func (w *WAL) Append(entry Entry) error {
 	return nil
 }
 
-func (w *WAL) Read() error {
-	offset := 0
-	while
-	data := make([]byte, 5)
-	count, err := w.file.Read(data)
+func (w *WAL) Read() ([]Entry, error) {
+	opBytes := make([]byte, 1)
+	lenOfKeyBytes := make([]byte, 4)
+	lenOfValueBytes := make([]byte, 4)
+	if _, err := w.file.Read(opBytes); err != nil {
+		return nil, fmt.Errorf("No data stored in file")
+	}
+	op := OpType(opBytes[0])
+	var opErr error = nil
+	var entries []Entry
+	for opErr == nil {
+		w.file.Read(lenOfKeyBytes)
+		lenOfKey := binary.LittleEndian.Uint32(lenOfKeyBytes)
 
-	return nil
+		keyBytes := make([]byte, lenOfKey)
+		w.file.Read(keyBytes)
+
+		w.file.Read(lenOfValueBytes)
+		lenOfValue := binary.LittleEndian.Uint32(lenOfValueBytes)
+
+		valueBytes := make([]byte, lenOfValue)
+		w.file.Read(valueBytes)
+		entry := Entry{
+			op,
+			keyBytes,
+			valueBytes,
+		}
+		entries = append(entries, entry)
+
+		_, opErr = w.file.Read(opBytes)
+		op = OpType(opBytes[0])
+	}
+
+	return entries, nil
 }
