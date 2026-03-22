@@ -27,9 +27,9 @@ type WAL struct {
 }
 
 func Open(filepath string) (*WAL, error) {
-	file, err := os.OpenFile(filepath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	file, err := os.OpenFile(filepath, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
-		return nil, fmt.Errorf("File string %s ran into error when opening file: %w", filepath, err)
+		return nil, fmt.Errorf("file string %s ran into error when opening file: %w", filepath, err)
 	}
 	return &WAL{
 		file: file,
@@ -41,9 +41,9 @@ func (w *WAL) Append(entry Entry) error {
 	defer w.mu.Unlock()
 
 	// bytes for each input, 1 for the opCode (0/1), 4 for len of the key in decimal then key, 4 for len of the value in decimal then key
-	total_bytes := 1 + 4 + len(entry.Key) + 4 + len(entry.Value)
+	totalBytes := 1 + 4 + len(entry.Key) + 4 + len(entry.Value)
 	// make soemthing with the number of bytes needed for the entry
-	payload := make([]byte, total_bytes)
+	payload := make([]byte, totalBytes)
 	offset := 0
 	payload[offset] = byte(entry.Op) // adds the operation to the payload, convert int to byte format
 	offset += 1
@@ -61,11 +61,11 @@ func (w *WAL) Append(entry Entry) error {
 
 	// now payload has all the entry and we can write it to the file
 	if _, err := w.file.Write(payload); err != nil {
-		return fmt.Errorf("Writing to file has errored: %w", err)
+		return fmt.Errorf("writing to file has errored: %w", err)
 	}
 
 	if err := w.file.Sync(); err != nil {
-		return fmt.Errorf("Syncing file has errored: %w", err)
+		return fmt.Errorf("syncing file has errored: %w", err)
 	}
 	return nil
 }
@@ -76,7 +76,7 @@ func (w *WAL) ReadFile() ([]Entry, error) {
 	lenOfKeyBytes := make([]byte, 4)
 	lenOfValueBytes := make([]byte, 4)
 	if _, err := w.file.Read(opBytes); err != nil {
-		return nil, fmt.Errorf("No data stored in file")
+		return nil, fmt.Errorf("no data stored in file")
 	}
 	// Converts the first (and only byte) of opBytes to a optype
 	op := OpType(opBytes[0])
