@@ -20,10 +20,7 @@ func Open(walPath string, maxSize int, p float32, maxLevel int) (*Memtable, erro
 	}
 	return &Memtable{
 		w,
-		&skipList{
-			maxLevel: maxLevel,
-			p:        p,
-		},
+		newSkipList(p, maxLevel),
 		0,
 		maxSize,
 	}, nil
@@ -49,21 +46,22 @@ func (m *Memtable) Put(key []byte, value []byte) error {
 }
 
 func (m *Memtable) Delete(key []byte) error {
+	err := m.list.delete(key)
+	if err != nil {
+		return fmt.Errorf("error: %w", err)
+	}
+	m.sizeInBytes += len(key)
+
 	entry := wal.Entry{
 		Op:    wal.OpDelete,
 		Key:   key,
 		Value: []byte{},
 	}
-	err := m.wal.Append(entry)
+	err = m.wal.Append(entry)
 	if err != nil {
 		return fmt.Errorf("error: %w", err)
 	}
 
-	err = m.list.delete(key)
-	if err != nil {
-		return fmt.Errorf("error: %w", err)
-	}
-	m.sizeInBytes += len(key)
 	return nil
 }
 
