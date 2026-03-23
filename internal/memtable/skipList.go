@@ -112,14 +112,16 @@ func (list *skipList) delete(key []byte) error {
 }
 
 func (list *skipList) GetAll() []KVEntry {
-	curr := list.head
+	curr := list.head.forward[0]
 	var entries []KVEntry
 	for curr != nil {
-		entry := KVEntry{
-			curr.key,
-			curr.value,
+		if len(curr.value) != 0 {
+			entry := KVEntry{
+				curr.key,
+				curr.value,
+			}
+			entries = append(entries, entry)
 		}
-		entries = append(entries, entry)
 		curr = curr.forward[0]
 	}
 	return entries
