@@ -78,3 +78,7 @@ func (m *Memtable) Get(key []byte) ([]byte, error) {
 func (m *Memtable) IsFull() bool {
 	return m.sizeInBytes >= m.maxSize
 }
+
+func (m *Memtable) GetAll() []KVEntry {
+	return m.list.GetAll()
+}
