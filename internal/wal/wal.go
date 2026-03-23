@@ -33,6 +33,7 @@ func Open(filepath string) (*WAL, error) {
 	}
 	return &WAL{
 		file: file,
+		mu:   sync.Mutex{},
 	}, nil
 }
 

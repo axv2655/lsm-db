@@ -23,8 +23,8 @@ type skipList struct {
 }
 
 type KVEntry struct {
-	key   []byte
-	value []byte
+	Key   []byte
+	Value []byte
 }
 
 func newSkipList(p float32, maxLevel int) *skipList {
@@ -50,7 +50,7 @@ func (list *skipList) insert(key []byte, value []byte) error {
 	}
 	curr = curr.forward[0]
 
-	if curr != nil && bytes.Compare(curr.key, key) == 0 {
+	if curr != nil && bytes.Equal(curr.key, key) {
 		curr.value = value
 		return nil
 	}
