@@ -1,0 +1,6 @@
+{
+    "skip_list_p": 0.5,
+    "skip_list_max_level": 12,
+    "memtable_max_size_bytes": 10485760,
+    "wal_path": "./test.wal"
+}
