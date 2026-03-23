@@ -22,6 +22,11 @@ type skipList struct {
 	head *skipListNode
 }
 
+type KVEntry struct {
+	key   []byte
+	value []byte
+}
+
 func newSkipList(p float32, maxLevel int) *skipList {
 	return &skipList{
 		maxLevel,
@@ -90,7 +95,7 @@ func (list *skipList) get(key []byte) (*skipListNode, error) {
 	}
 	curr = curr.forward[0]
 
-	if curr != nil && bytes.Compare(curr.key, key) == 0 && len(curr.value) != 0 {
+	if curr != nil && bytes.Equal(curr.key, key) && len(curr.value) != 0 {
 		return curr, nil
 	}
 	return nil, fmt.Errorf("key not found")
@@ -98,8 +103,24 @@ func (list *skipList) get(key []byte) (*skipListNode, error) {
 
 func (list *skipList) delete(key []byte) error {
 	if _, err := list.get(key); err != nil {
-		return fmt.Errorf("Key does not exist")
+		return fmt.Errorf("key does not exist")
 	}
-	list.insert(key, []byte{})
+	if err := list.insert(key, []byte{}); err != nil {
+		return fmt.Errorf("error: %w", err)
+	}
 	return nil
+}
+
+func (list *skipList) GetAll() []KVEntry {
+	curr := list.head
+	var entries []KVEntry
+	for curr != nil {
+		entry := KVEntry{
+			curr.key,
+			curr.value,
+		}
+		entries = append(entries, entry)
+		curr = curr.forward[0]
+	}
+	return entries
 }
