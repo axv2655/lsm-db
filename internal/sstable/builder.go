@@ -1,6 +1,7 @@
 package sstable
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"os"
@@ -27,7 +28,7 @@ type Builder struct {
 	mu sync.Mutex
 }
 
-func (s *sstable) NewBuilder(filepath string) (*Builder, error) {
+func NewBuilder(filepath string) (*Builder, error) {
 	file, err := os.OpenFile(filepath, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return nil, fmt.Errorf("file string %s ran into error when opening file: %w", filepath, err)
@@ -44,6 +45,7 @@ func (b *Builder) AddEntry(KV []memtable.KVEntry) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for _, v := range KV {
+		b.index = append(b.index, IndexEntry{key: v.Key, offSet: b.currentOffset})
 		payload := formatEntry(v.Key, v.Value)
 		b.currentOffset += int64(4 + len(v.Key) + 4 + len(v.Value))
 		if _, err := b.file.Write(payload); err != nil {
@@ -55,7 +57,6 @@ func (b *Builder) AddEntry(KV []memtable.KVEntry) error {
 }
 
 func formatEntry(key []byte, value []byte) []byte {
-	// bytes for each input, 1 for the opCode (0/1), 4 for len of the key in decimal then key, 4 for len of the value in decimal then key
 	totalBytes := 4 + len(key) + 4 + len(value)
 	// make soemthing with the number of bytes needed for the entry
 	payload := make([]byte, totalBytes)
@@ -72,4 +73,61 @@ func formatEntry(key []byte, value []byte) []byte {
 	// copy the entry's value to make a new value and not just use existing address
 	copy(payload[offset:], value)
 	return payload
+}
+
+func (b *Builder) Finish() error {
+	currentOffset := b.currentOffset
+	for _, v := range b.index {
+		offset := 4 + len(v.key) + 8 // 4 for size of key, len of key, 8 for 64bit int for offset in the acutal ss table
+		entryBytes := make([]byte, offset)
+
+		binary.LittleEndian.PutUint32(entryBytes[0:], uint32(len(v.key)))
+		copy(entryBytes[4:], v.key)
+
+		binary.LittleEndian.PutUint64(entryBytes[(offset-8):], uint64((v.offSet)))
+		if _, err := b.file.Write(entryBytes); err != nil {
+			return fmt.Errorf("writing to sstable has errored: %w", err)
+		}
+		b.currentOffset += int64(offset)
+	}
+	footer := make([]byte, 8)
+	binary.LittleEndian.PutUint64(footer, uint64(currentOffset))
+
+	if _, err := b.file.Write(footer); err != nil {
+		return fmt.Errorf("failed to write footer: %w", err)
+	}
+
+	if err := b.file.Sync(); err != nil {
+		return fmt.Errorf("failed to sync file: %w", err)
+	}
+	if err := b.file.Close(); err != nil {
+		return fmt.Errorf("failed to close file: %w", err)
+	}
+
+	return nil
+}
+
+func (b *Builder) getIndex(key []byte) (*IndexEntry, error) {
+	if bytes.Compare(key, b.index[0].key) < 0 || bytes.Compare(key, b.index[len(b.index)-1].key) > 0 {
+		return nil, fmt.Errorf("key %s is out of bounds of the sstable index", key)
+	}
+	left := 0
+	right := len(b.index) - 1
+	for left <= right {
+		mid := (left + right) / 2
+		if bytes.Compare(key, b.index[mid].key) < 0 {
+			right = mid - 1
+			continue
+		}
+		if bytes.Compare(key, b.index[mid].key) > 0 {
+			left = mid + 1
+			continue
+		}
+		if bytes.Equal(key, b.index[mid].key) {
+			return &b.index[mid], nil
+		}
+
+	}
+
+	return nil, fmt.Errorf("key %s was not found in the sstable index", key)
 }
