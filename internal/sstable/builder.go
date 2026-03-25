@@ -1,7 +1,6 @@
 package sstable
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"os"
@@ -13,11 +12,6 @@ import (
 type IndexEntry struct {
 	key    []byte
 	offSet int64
-}
-
-type sstable struct {
-	file  *os.File
-	index []IndexEntry
 }
 
 type Builder struct {
@@ -105,29 +99,4 @@ func (b *Builder) Finish() error {
 	}
 
 	return nil
-}
-
-func (b *Builder) getIndex(key []byte) (*IndexEntry, error) {
-	if bytes.Compare(key, b.index[0].key) < 0 || bytes.Compare(key, b.index[len(b.index)-1].key) > 0 {
-		return nil, fmt.Errorf("key %s is out of bounds of the sstable index", key)
-	}
-	left := 0
-	right := len(b.index) - 1
-	for left <= right {
-		mid := (left + right) / 2
-		if bytes.Compare(key, b.index[mid].key) < 0 {
-			right = mid - 1
-			continue
-		}
-		if bytes.Compare(key, b.index[mid].key) > 0 {
-			left = mid + 1
-			continue
-		}
-		if bytes.Equal(key, b.index[mid].key) {
-			return &b.index[mid], nil
-		}
-
-	}
-
-	return nil, fmt.Errorf("key %s was not found in the sstable index", key)
 }
