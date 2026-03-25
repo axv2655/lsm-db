@@ -70,7 +70,7 @@ func formatEntry(key []byte, value []byte) []byte {
 }
 
 func (b *Builder) Finish() error {
-	currentOffset := b.currentOffset
+	indexOffset := b.currentOffset
 	for _, v := range b.index {
 		offset := 4 + len(v.key) + 8 // 4 for size of key, len of key, 8 for 64bit int for offset in the acutal ss table
 		entryBytes := make([]byte, offset)
@@ -85,12 +85,17 @@ func (b *Builder) Finish() error {
 		b.currentOffset += int64(offset)
 	}
 	footer := make([]byte, 8)
-	binary.LittleEndian.PutUint64(footer, uint64(currentOffset))
+	binary.LittleEndian.PutUint64(footer, uint64(indexOffset))
 
 	if _, err := b.file.Write(footer); err != nil {
 		return fmt.Errorf("failed to write footer: %w", err)
 	}
+	lenOfEntry := make([]byte, 8)
+	binary.LittleEndian.PutUint64(lenOfEntry, uint64(len(b.index)))
 
+	if _, err := b.file.Write(lenOfEntry); err != nil {
+		return fmt.Errorf("failed to write footer: %w", err)
+	}
 	if err := b.file.Sync(); err != nil {
 		return fmt.Errorf("failed to sync file: %w", err)
 	}
