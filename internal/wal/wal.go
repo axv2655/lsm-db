@@ -71,6 +71,18 @@ func (w *WAL) Append(entry Entry) error {
 	return nil
 }
 
+func (w *WAL) Close() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if err := w.file.Sync(); err != nil {
+		return fmt.Errorf("failed to sync wal: %w", err)
+	}
+	if err := w.file.Close(); err != nil {
+		return fmt.Errorf("failed to close wal: %w", err)
+	}
+	return nil
+}
+
 func (w *WAL) ReadFile() ([]Entry, error) {
 	// creating all the slices that can be reused (because they are converted to integers)
 	opBytes := make([]byte, 1)

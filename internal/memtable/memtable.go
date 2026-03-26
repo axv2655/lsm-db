@@ -73,8 +73,15 @@ func (m *Memtable) Get(key []byte) ([]byte, error) {
 	return node.value, nil
 }
 
-func (m *Memtable) IsFull() bool {
-	return m.sizeInBytes >= m.maxSize
+func (m *Memtable) Close() error {
+	if err := m.wal.Close(); err != nil {
+		return fmt.Errorf("could not close wal: %w", err)
+	}
+	return nil
+}
+
+func (m *Memtable) IsFull(newKV int) bool {
+	return (m.sizeInBytes + newKV) >= m.maxSize
 }
 
 func (m *Memtable) GetAll() []KVEntry {

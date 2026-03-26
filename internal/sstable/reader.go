@@ -13,7 +13,7 @@ type SSTable struct {
 	index []IndexEntry
 }
 
-func openSSTable(filepath string) (*SSTable, error) {
+func Open(filepath string) (*SSTable, error) {
 	file, err := os.Open(filepath)
 	if err != nil {
 		return nil, fmt.Errorf("error opening sstable file %s: %w", filepath, err)
@@ -62,6 +62,13 @@ func openSSTable(filepath string) (*SSTable, error) {
 		file:  file,
 		index: entries,
 	}, nil
+}
+
+func (s *SSTable) Close() error {
+	if err := s.file.Close(); err != nil {
+		return fmt.Errorf("failed to close sstable: %w", err)
+	}
+	return nil
 }
 
 func (s *SSTable) getIndex(key []byte) (*IndexEntry, error) {
