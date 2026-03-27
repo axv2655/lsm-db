@@ -83,19 +83,57 @@ func (w *WAL) Close() error {
 	return nil
 }
 
+func (w *WAL) Clear(copyPath string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	// seek to start of WAL to copy all contents
+	if _, err := w.file.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("failed to seek wal for copy: %w", err)
+	}
+
+	dst, err := os.Create(copyPath)
+	if err != nil {
+		return fmt.Errorf("failed to create wal copy at %s: %w", copyPath, err)
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, w.file); err != nil {
+		return fmt.Errorf("failed to copy wal to %s: %w", copyPath, err)
+	}
+	if err := dst.Sync(); err != nil {
+		return fmt.Errorf("failed to sync wal copy: %w", err)
+	}
+
+	// truncate and reset the WAL file
+	if err := w.file.Truncate(0); err != nil {
+		return fmt.Errorf("failed to truncate wal: %w", err)
+	}
+	if _, err := w.file.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("failed to seek wal after truncate: %w", err)
+	}
+
+	return nil
+}
+
 func (w *WAL) ReadFile() ([]Entry, error) {
+	if _, err := w.file.Seek(0, io.SeekStart); err != nil {
+		return nil, fmt.Errorf("failed to seek wal to start: %w", err)
+	}
+
 	// creating all the slices that can be reused (because they are converted to integers)
 	opBytes := make([]byte, 1)
 	lenOfKeyBytes := make([]byte, 4)
 	lenOfValueBytes := make([]byte, 4)
-	if _, err := w.file.Read(opBytes); err != nil {
-		return nil, fmt.Errorf("no data stored in file")
-	}
-	// Converts the first (and only byte) of opBytes to a optype
-	op := OpType(opBytes[0])
-	var opErr error = nil
-	var entries []Entry // used to save all entries
-	for opErr == nil {  // since every operation has an opType, checking if theres an error reading anything
+
+	var entries []Entry
+	for {
+		if _, err := w.file.Read(opBytes); err != nil {
+			// no more entries to read (empty file or end of file)
+			break
+		}
+		op := OpType(opBytes[0])
+
 		// reads value from file and converts lens to integers
 		if _, err := io.ReadFull(w.file, lenOfKeyBytes); err != nil {
 			return nil, fmt.Errorf("error reading wal file for len of key, error: %w", err)
@@ -124,9 +162,6 @@ func (w *WAL) ReadFile() ([]Entry, error) {
 			valueBytes,
 		}
 		entries = append(entries, entry)
-
-		_, opErr = w.file.Read(opBytes)
-		op = OpType(opBytes[0])
 	}
 
 	return entries, nil

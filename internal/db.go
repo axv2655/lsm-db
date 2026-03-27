@@ -85,14 +85,22 @@ func Open(cfg *Config) (*DB, error) {
 	}, nil
 }
 
-func (db *DB) nextSSTablePath() string {
-	seq := atomic.AddUint64(&db.nextSeq, 1)
+func (db *DB) nextSeqNum() uint64 {
+	return atomic.AddUint64(&db.nextSeq, 1)
+}
+
+func (db *DB) sstPathForSeq(seq uint64) string {
 	return fmt.Sprintf("%s/%06d.sst", db.config.SSTDir, seq)
+}
+
+func (db *DB) walCopyPathForSeq(seq uint64) string {
+	return fmt.Sprintf("%s/%06d.wal", db.config.SSTDir, seq)
 }
 
 func (db *DB) Flush() error {
 	entries := db.memtable.GetAll()
-	path := db.nextSSTablePath()
+	seq := db.nextSeqNum()
+	path := db.sstPathForSeq(seq)
 	builder, err := sstable.NewBuilder(path)
 	if err != nil {
 		return fmt.Errorf("could not create sstable builder: %w", err)
@@ -108,6 +116,11 @@ func (db *DB) Flush() error {
 		return fmt.Errorf("could not open flushed sstable: %w", err)
 	}
 	db.sstables = append(db.sstables, sst)
+
+	walCopyPath := db.walCopyPathForSeq(seq)
+	if err := db.memtable.ClearWAL(walCopyPath); err != nil {
+		return fmt.Errorf("could not clear wal: %w", err)
+	}
 	return nil
 }
 
@@ -119,6 +132,9 @@ func (db *DB) Put(key, value []byte) error {
 	if db.memtable.IsFull(size) {
 		if err := db.Flush(); err != nil {
 			return fmt.Errorf("could not flush memtable to SSTable: %w", err)
+		}
+		if err := db.memtable.Close(); err != nil {
+			return fmt.Errorf("could not close old memtable: %w", err)
 		}
 		mem, err := memtable.Open(db.config.WalPath, db.config.MemtableMaxBytes, db.config.SkipListP, db.config.SkipListMaxLevel)
 		if err != nil {
@@ -160,6 +176,9 @@ func (db *DB) Delete(key []byte) error {
 	if db.memtable.IsFull(size) {
 		if err := db.Flush(); err != nil {
 			return fmt.Errorf("could not flush memtable to SSTable: %w", err)
+		}
+		if err := db.memtable.Close(); err != nil {
+			return fmt.Errorf("could not close old memtable: %w", err)
 		}
 		mem, err := memtable.Open(db.config.WalPath, db.config.MemtableMaxBytes, db.config.SkipListP, db.config.SkipListMaxLevel)
 		if err != nil {

@@ -67,21 +67,19 @@ func (m *Memtable) Put(key []byte, value []byte) error {
 }
 
 func (m *Memtable) Delete(key []byte) error {
-	err := m.list.delete(key)
-	if err != nil {
-		return fmt.Errorf("error: %w", err)
-	}
-	m.sizeInBytes += len(key)
-
 	entry := wal.Entry{
 		Op:    wal.OpDelete,
 		Key:   key,
 		Value: []byte{},
 	}
-	err = m.wal.Append(entry)
-	if err != nil {
+	if err := m.wal.Append(entry); err != nil {
 		return fmt.Errorf("error: %w", err)
 	}
+
+	if err := m.list.delete(key); err != nil {
+		return fmt.Errorf("error: %w", err)
+	}
+	m.sizeInBytes += len(key)
 
 	return nil
 }
@@ -99,6 +97,10 @@ func (m *Memtable) Close() error {
 		return fmt.Errorf("could not close wal: %w", err)
 	}
 	return nil
+}
+
+func (m *Memtable) ClearWAL(copyPath string) error {
+	return m.wal.Clear(copyPath)
 }
 
 func (m *Memtable) IsFull(newKV int) bool {
