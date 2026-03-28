@@ -16,7 +16,8 @@ type SetRequest struct {
 }
 
 type KeyRequest struct {
-	Key string `json:"key"`
+	Key        string `json:"key"`
+	ProtoClass string `json:"protobufClass"`
 }
 
 func main() {
@@ -67,21 +68,25 @@ func main() {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		val, protoClass, err := db.Get([]byte(req.Key))
+		if req.ProtoClass == "" {
+			http.Error(w, "protobufClass is required", http.StatusBadRequest)
+			return
+		}
+
+		val, err := db.Get([]byte(req.Key), []byte(req.ProtoClass))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
 
-		className := string(protoClass)
-		if className != "" && db.Registry.HasMessage(className) {
-			decoded, err := db.Registry.Decode(className, val)
+		if db.Registry.HasMessage(req.ProtoClass) {
+			decoded, err := db.Registry.Decode(req.ProtoClass, val)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(fmt.Sprintf(`{"protobufClass":%q,"value":%s}`, className, string(decoded))))
+			w.Write([]byte(fmt.Sprintf(`{"protobufClass":%q,"value":%s}`, req.ProtoClass, string(decoded))))
 			return
 		}
 
@@ -95,7 +100,11 @@ func main() {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if err := db.Delete([]byte(req.Key)); err != nil {
+		if req.ProtoClass == "" {
+			http.Error(w, "protobufClass is required", http.StatusBadRequest)
+			return
+		}
+		if err := db.Delete([]byte(req.Key), []byte(req.ProtoClass)); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
