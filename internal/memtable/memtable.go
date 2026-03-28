@@ -32,10 +32,10 @@ func Open(walPath string, maxSize int, p float32, maxLevel int) (*Memtable, erro
 	for _, entry := range entries {
 		switch entry.Op {
 		case wal.OpPut:
-			if err := m.list.insert(entry.Key, entry.Value); err != nil {
+			if err := m.list.insert(entry.Key, entry.Value, entry.ProtoClass); err != nil {
 				return nil, fmt.Errorf("error replaying wal put: %w", err)
 			}
-			m.sizeInBytes += len(entry.Key) + len(entry.Value)
+			m.sizeInBytes += len(entry.Key) + len(entry.Value) + len(entry.ProtoClass)
 		case wal.OpDelete:
 			if err := m.list.delete(entry.Key); err != nil {
 				return nil, fmt.Errorf("error replaying wal delete: %w", err)
@@ -47,22 +47,23 @@ func Open(walPath string, maxSize int, p float32, maxLevel int) (*Memtable, erro
 	return m, nil
 }
 
-func (m *Memtable) Put(key []byte, value []byte) error {
+func (m *Memtable) Put(key []byte, value []byte, protoClass []byte) error {
 	entry := wal.Entry{
-		Op:    wal.OpPut,
-		Key:   key,
-		Value: value,
+		Op:         wal.OpPut,
+		Key:        key,
+		Value:      value,
+		ProtoClass: protoClass,
 	}
 	err := m.wal.Append(entry)
 	if err != nil {
 		return fmt.Errorf("error: %w", err)
 	}
 
-	err = m.list.insert(key, value)
+	err = m.list.insert(key, value, protoClass)
 	if err != nil {
 		return fmt.Errorf("error: %w", err)
 	}
-	m.sizeInBytes += len(key) + len(value)
+	m.sizeInBytes += len(key) + len(value) + len(protoClass)
 	return nil
 }
 
@@ -84,12 +85,12 @@ func (m *Memtable) Delete(key []byte) error {
 	return nil
 }
 
-func (m *Memtable) Get(key []byte) ([]byte, error) {
+func (m *Memtable) Get(key []byte) (value []byte, protoClass []byte, err error) {
 	node, err := m.list.get(key)
 	if err != nil {
-		return nil, fmt.Errorf("error: %w", err)
+		return nil, nil, fmt.Errorf("error: %w", err)
 	}
-	return node.value, nil
+	return node.value, node.protoClass, nil
 }
 
 func (m *Memtable) Close() error {

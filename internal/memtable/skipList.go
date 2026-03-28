@@ -7,8 +7,9 @@ import (
 )
 
 type skipListNode struct {
-	key   []byte
-	value []byte
+	key        []byte
+	value      []byte
+	protoClass []byte
 
 	forward []*skipListNode
 }
@@ -23,8 +24,9 @@ type skipList struct {
 }
 
 type KVEntry struct {
-	Key   []byte
-	Value []byte
+	Key        []byte
+	Value      []byte
+	ProtoClass []byte
 }
 
 func newSkipList(p float32, maxLevel int) *skipList {
@@ -38,11 +40,11 @@ func newSkipList(p float32, maxLevel int) *skipList {
 	}
 }
 
-func (list *skipList) insert(key []byte, value []byte) error {
+func (list *skipList) insert(key []byte, value []byte, protoClass []byte) error {
 	curr := list.head
 	update := make([]*skipListNode, list.maxLevel)
 	for i := list.level - 1; i >= 0; i-- {
-		for curr.forward[i] != nil && bytes.Compare(curr.forward[i].key, key) < 0 { // curr's forward < key
+		for curr.forward[i] != nil && bytes.Compare(curr.forward[i].key, key) < 0 {
 			curr = curr.forward[i]
 		}
 		update[i] = curr
@@ -52,6 +54,7 @@ func (list *skipList) insert(key []byte, value []byte) error {
 
 	if curr != nil && bytes.Equal(curr.key, key) {
 		curr.value = value
+		curr.protoClass = protoClass
 		return nil
 	}
 
@@ -64,9 +67,10 @@ func (list *skipList) insert(key []byte, value []byte) error {
 	}
 
 	newNode := &skipListNode{
-		key:     key,
-		value:   value,
-		forward: make([]*skipListNode, newLevel),
+		key:        key,
+		value:      value,
+		protoClass: protoClass,
+		forward:    make([]*skipListNode, newLevel),
 	}
 
 	for i := 0; i < newLevel; i++ {
@@ -105,7 +109,7 @@ func (list *skipList) delete(key []byte) error {
 	if _, err := list.get(key); err != nil {
 		return fmt.Errorf("key does not exist")
 	}
-	if err := list.insert(key, []byte{}); err != nil {
+	if err := list.insert(key, []byte{}, []byte{}); err != nil {
 		return fmt.Errorf("error: %w", err)
 	}
 	return nil
@@ -117,8 +121,9 @@ func (list *skipList) GetAll() []KVEntry {
 	for curr != nil {
 		if len(curr.value) != 0 {
 			entry := KVEntry{
-				curr.key,
-				curr.value,
+				Key:        curr.key,
+				Value:      curr.value,
+				ProtoClass: curr.protoClass,
 			}
 			entries = append(entries, entry)
 		}
