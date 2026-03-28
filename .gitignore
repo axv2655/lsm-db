@@ -1,2 +1,3 @@
 *.wal
 sstables/
+test.wal.backup

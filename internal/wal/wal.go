@@ -16,9 +16,10 @@ const (
 )
 
 type Entry struct {
-	Op    OpType
-	Key   []byte
-	Value []byte
+	Op         OpType
+	Key        []byte
+	Value      []byte
+	ProtoClass []byte
 }
 
 type WAL struct {
@@ -41,24 +42,26 @@ func (w *WAL) Append(entry Entry) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	// bytes for each input, 1 for the opCode (0/1), 4 for len of the key in decimal then key, 4 for len of the value in decimal then key
-	totalBytes := 1 + 4 + len(entry.Key) + 4 + len(entry.Value)
-	// make soemthing with the number of bytes needed for the entry
+	// format: [1B op][4B keyLen][key][4B valueLen][value][4B classLen][class]
+	totalBytes := 1 + 4 + len(entry.Key) + 4 + len(entry.Value) + 4 + len(entry.ProtoClass)
 	payload := make([]byte, totalBytes)
 	offset := 0
-	payload[offset] = byte(entry.Op) // adds the operation to the payload, convert int to byte format
+	payload[offset] = byte(entry.Op)
 	offset += 1
 	binary.LittleEndian.PutUint32(payload[offset:], uint32(len(entry.Key)))
 	offset += 4
 
-	// copy the entry's key to make a new value and not just use existing address
 	copy(payload[offset:], entry.Key)
 	offset += len(entry.Key)
 	binary.LittleEndian.PutUint32(payload[offset:], uint32(len(entry.Value)))
 	offset += 4
 
-	// copy the entry's value to make a new value and not just use existing address
 	copy(payload[offset:], entry.Value)
+	offset += len(entry.Value)
+	binary.LittleEndian.PutUint32(payload[offset:], uint32(len(entry.ProtoClass)))
+	offset += 4
+
+	copy(payload[offset:], entry.ProtoClass)
 
 	// now payload has all the entry and we can write it to the file
 	if _, err := w.file.Write(payload); err != nil {
@@ -121,45 +124,45 @@ func (w *WAL) ReadFile() ([]Entry, error) {
 		return nil, fmt.Errorf("failed to seek wal to start: %w", err)
 	}
 
-	// creating all the slices that can be reused (because they are converted to integers)
 	opBytes := make([]byte, 1)
-	lenOfKeyBytes := make([]byte, 4)
-	lenOfValueBytes := make([]byte, 4)
+	lenBuf := make([]byte, 4)
 
 	var entries []Entry
 	for {
 		if _, err := w.file.Read(opBytes); err != nil {
-			// no more entries to read (empty file or end of file)
 			break
 		}
 		op := OpType(opBytes[0])
 
-		// reads value from file and converts lens to integers
-		if _, err := io.ReadFull(w.file, lenOfKeyBytes); err != nil {
-			return nil, fmt.Errorf("error reading wal file for len of key, error: %w", err)
+		if _, err := io.ReadFull(w.file, lenBuf); err != nil {
+			return nil, fmt.Errorf("error reading wal file for len of key: %w", err)
 		}
-		lenOfKey := binary.LittleEndian.Uint32(lenOfKeyBytes)
-
-		keyBytes := make([]byte, lenOfKey)
+		keyBytes := make([]byte, binary.LittleEndian.Uint32(lenBuf))
 		if _, err := io.ReadFull(w.file, keyBytes); err != nil {
-			return nil, fmt.Errorf("error reading wal file for key, error: %w", err)
+			return nil, fmt.Errorf("error reading wal file for key: %w", err)
 		}
 
-		if _, err := io.ReadFull(w.file, lenOfValueBytes); err != nil {
-			return nil, fmt.Errorf("error reading wal file for len of value, error: %w", err)
+		if _, err := io.ReadFull(w.file, lenBuf); err != nil {
+			return nil, fmt.Errorf("error reading wal file for len of value: %w", err)
 		}
-		lenOfValue := binary.LittleEndian.Uint32(lenOfValueBytes)
-
-		valueBytes := make([]byte, lenOfValue)
+		valueBytes := make([]byte, binary.LittleEndian.Uint32(lenBuf))
 		if _, err := io.ReadFull(w.file, valueBytes); err != nil {
-			return nil, fmt.Errorf("error reading wal file for value, error: %w", err)
+			return nil, fmt.Errorf("error reading wal file for value: %w", err)
 		}
 
-		// creates an entry obj and adds to the entries slice
+		if _, err := io.ReadFull(w.file, lenBuf); err != nil {
+			return nil, fmt.Errorf("error reading wal file for len of proto class: %w", err)
+		}
+		classBytes := make([]byte, binary.LittleEndian.Uint32(lenBuf))
+		if _, err := io.ReadFull(w.file, classBytes); err != nil {
+			return nil, fmt.Errorf("error reading wal file for proto class: %w", err)
+		}
+
 		entry := Entry{
-			op,
-			keyBytes,
-			valueBytes,
+			Op:         op,
+			Key:        keyBytes,
+			Value:      valueBytes,
+			ProtoClass: classBytes,
 		}
 		entries = append(entries, entry)
 	}
