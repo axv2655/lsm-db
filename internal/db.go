@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 
 	"github.com/axv2655/lsm-db/internal/memtable"
+	"github.com/axv2655/lsm-db/internal/schema"
 	"github.com/axv2655/lsm-db/internal/sstable"
 )
 
@@ -18,6 +19,7 @@ type Config struct {
 	MemtableMaxBytes int     `json:"memtable_max_size_bytes"`
 	WalPath          string  `json:"wal_path"`
 	SSTDir           string  `json:"sst_dir"`
+	ProtoDir         string  `json:"proto_dir"`
 }
 
 func LoadConfig(filepath string) (*Config, error) {
@@ -36,6 +38,7 @@ type DB struct {
 	memtable *memtable.Memtable
 	sstables []*sstable.SSTable
 	config   *Config
+	Registry *schema.Registry
 	nextSeq  uint64
 }
 
@@ -47,6 +50,15 @@ func Open(cfg *Config) (*DB, error) {
 
 	if err := os.MkdirAll(cfg.SSTDir, 0o755); err != nil {
 		return nil, fmt.Errorf("could not create sst directory: %w", err)
+	}
+
+	if err := os.MkdirAll(cfg.ProtoDir, 0o755); err != nil {
+		return nil, fmt.Errorf("could not create proto directory: %w", err)
+	}
+
+	reg, err := schema.NewRegistry(cfg.ProtoDir)
+	if err != nil {
+		return nil, fmt.Errorf("could not load proto schemas: %w", err)
 	}
 
 	entries, err := os.ReadDir(cfg.SSTDir)
@@ -81,6 +93,7 @@ func Open(cfg *Config) (*DB, error) {
 		memtable: mem,
 		sstables: tables,
 		config:   cfg,
+		Registry: reg,
 		nextSeq:  maxSeq,
 	}, nil
 }
@@ -124,8 +137,8 @@ func (db *DB) Flush() error {
 	return nil
 }
 
-func (db *DB) Put(key, value []byte) error {
-	size := len(key) + len(value)
+func (db *DB) Put(key, value, protoClass []byte) error {
+	size := len(key) + len(value) + len(protoClass)
 	if size > db.config.MemtableMaxBytes {
 		return fmt.Errorf("entry size %d exceeds memtable max size %d", size, db.config.MemtableMaxBytes)
 	}
@@ -142,21 +155,21 @@ func (db *DB) Put(key, value []byte) error {
 		}
 		db.memtable = mem
 	}
-	return db.memtable.Put(key, value)
+	return db.memtable.Put(key, value, protoClass)
 }
 
-func (db *DB) Get(key []byte) ([]byte, error) {
-	val, err := db.memtable.Get(key)
+func (db *DB) Get(key []byte) (value []byte, protoClass []byte, err error) {
+	val, class, err := db.memtable.Get(key)
 	if err == nil {
-		return val, nil
+		return val, class, nil
 	}
 	for i := len(db.sstables) - 1; i >= 0; i-- {
 		val, err = db.sstables[i].Get(key)
 		if err == nil {
-			return val, nil
+			return val, nil, nil
 		}
 	}
-	return nil, fmt.Errorf("key not found")
+	return nil, nil, fmt.Errorf("key not found")
 }
 
 func (db *DB) Close() error {

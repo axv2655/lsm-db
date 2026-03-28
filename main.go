@@ -10,8 +10,9 @@ import (
 )
 
 type SetRequest struct {
-	Key   string `json:"key"`
-	Value string `json:"value"`
+	Key        string          `json:"key"`
+	Value      json.RawMessage `json:"value"`
+	ProtoClass string          `json:"protobufClass"`
 }
 
 type KeyRequest struct {
@@ -37,7 +38,22 @@ func main() {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if err := db.Put([]byte(req.Key), []byte(req.Value)); err != nil {
+		if req.ProtoClass == "" {
+			http.Error(w, "protobufClass is required", http.StatusBadRequest)
+			return
+		}
+		if !db.Registry.HasMessage(req.ProtoClass) {
+			http.Error(w, fmt.Sprintf("unknown protobufClass: %s", req.ProtoClass), http.StatusBadRequest)
+			return
+		}
+
+		encoded, err := db.Registry.Encode(req.ProtoClass, req.Value)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if err := db.Put([]byte(req.Key), encoded, []byte(req.ProtoClass)); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -51,11 +67,24 @@ func main() {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		val, err := db.Get([]byte(req.Key))
+		val, protoClass, err := db.Get([]byte(req.Key))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
+
+		className := string(protoClass)
+		if className != "" && db.Registry.HasMessage(className) {
+			decoded, err := db.Registry.Decode(className, val)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(fmt.Sprintf(`{"protobufClass":%q,"value":%s}`, className, string(decoded))))
+			return
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"value": string(val)})
 	})

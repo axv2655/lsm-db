@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+message User {
+  string name = 1;
+  int32 age = 2;
+  string email = 3;
+}
+
+message Product {
+  string name = 1;
+  double price = 2;
+  int32 quantity = 3;
+}
