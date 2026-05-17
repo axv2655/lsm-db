@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package lsm;
+
+option go_package = "github.com/axv2655/lsm-db/pb";
+
+service LSMService {
+  rpc Set(SetRequest) returns (SetResponse);
+  rpc Get(GetRequest) returns (GetResponse);
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+  rpc Close(CloseRequest) returns (CloseResponse);
+}
+
+message SetRequest {
+  string key = 1;
+  bytes value = 2;        // JSON-encoded protobuf value (e.g. {"name":"Alice","age":30})
+  string proto_class = 3; // Protobuf message type name (e.g. "User")
+}
+
+message SetResponse {
+  string error = 1; // empty on success
+}
+
+message GetRequest {
+  string key = 1;
+  string proto_class = 2;
+}
+
+message GetResponse {
+  bytes value = 1;  // JSON-encoded protobuf value; empty if not found
+  bool found = 2;
+  string error = 3; // empty on success
+}
+
+message DeleteRequest {
+  string key = 1;
+  string proto_class = 2;
+}
+
+message DeleteResponse {
+  string error = 1; // empty on success
+}
+
+message CloseRequest {}
+
+message CloseResponse {
+  string error = 1; // empty on success
+}
