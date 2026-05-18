@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/bufbuild/protocompile"
@@ -50,8 +49,9 @@ func (r *Registry) loadDir(protoDir string) error {
 		Resolver: &protocompile.SourceResolver{
 			ImportPaths: []string{protoDir},
 			Accessor: func(path string) (io.ReadCloser, error) {
-				fullPath := filepath.Join(protoDir, path)
-				return os.Open(fullPath)
+				// protocompile passes the already-resolved path (importPath + filename),
+				// so open it directly rather than joining with protoDir again.
+				return os.Open(path)
 			},
 		},
 		SourceInfoMode: protocompile.SourceInfoStandard,
